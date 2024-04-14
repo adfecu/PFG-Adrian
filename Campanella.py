@@ -30,7 +30,7 @@ parser.add_argument('--val_lib', type=str, default='', help='path to validation 
 parser.add_argument('--output', type=str, default='.', help='name of output file')
 parser.add_argument('--batch_size', type=int, default=512, help='mini-batch size (default: 512)')
 parser.add_argument('--nepochs', type=int, default=100, help='number of epochs')
-parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')
+parser.add_argument('--workers', default=0, type=int, help='number of data loading workers (default: 4)')
 parser.add_argument('--test_every', default=10, type=int, help='test on val every (default: 10)')
 parser.add_argument('--weights', default=0.5, type=float, help='unbalanced positive class weight (default: 0.5, balanced classes)')
 parser.add_argument('--k', default=1, type=int, help='top k tiles are assumed to be of the same class as the slide (default: 1, standard MIL)')
@@ -52,7 +52,7 @@ def main():
     args = parser.parse_args()
 
     #cnn
-    model = models.resnet34(True)
+    model = models.resnet34("DEFAULT")
     model.fc = nn.Linear(model.fc.in_features, 2)
     model.cpu()
 
@@ -69,18 +69,19 @@ def main():
     normalize = transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.1,0.1,0.1])
     trans = transforms.Compose([transforms.ToTensor(), normalize])
 
+    print(args.train_lib)
+
     #load data
     train_dset = MILdataset(args.train_lib, trans)
     train_loader = torch.utils.data.DataLoader(
         train_dset,
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=False)
+        batch_size=args.batch_size, shuffle=False, pin_memory=False)
+    
     if args.val_lib:
         val_dset = MILdataset(args.val_lib, trans)
         val_loader = torch.utils.data.DataLoader(
             val_dset,
-            batch_size=args.batch_size, shuffle=False,
-            num_workers=args.workers, pin_memory=False)
+            batch_size=args.batch_size, shuffle=False, pin_memory=False)
 
     #open output file
     fconv = open(os.path.join(args.output,'convergence.csv'), 'w')
@@ -107,15 +108,17 @@ def main():
             probs = inference(epoch, val_loader, model)
             maxs = group_max(np.array(val_dset.slideIDX), probs, len(val_dset.targets))
             pred = [1 if x >= 0.5 else 0 for x in maxs]
-            err,fpr,fnr = calc_err(pred, val_dset.targets)
-            print('Validation\tEpoch: [{}/{}]\tError: {}\tFPR: {}\tFNR: {}'.format(epoch+1, args.nepochs, err, fpr, fnr))
+            err,fnr = calc_err(pred, val_dset.targets)
+            # print('Validation\tEpoch: [{}/{}]\tError: {}\tFPR: {}\tFNR: {}'.format(epoch+1, args.nepochs, err, fpr, fnr))
+            print('Validation\tEpoch: [{}/{}]\tError: {}\tFNR: {}'.format(epoch+1, args.nepochs, err, fnr))
             fconv = open(os.path.join(args.output, 'convergence.csv'), 'a')
             fconv.write('{},error,{}\n'.format(epoch+1, err))
-            fconv.write('{},fpr,{}\n'.format(epoch+1, fpr))
+            # fconv.write('{},fpr,{}\n'.format(epoch+1, fpr))
             fconv.write('{},fnr,{}\n'.format(epoch+1, fnr))
             fconv.close()
             #Save best model
-            err = (fpr+fnr)/2.
+            # err = (fpr+fnr)/2.
+            err = (fnr)/2.
             if 1-err >= best_acc:
                 best_acc = 1-err
                 obj = {
@@ -156,9 +159,9 @@ def calc_err(pred,real):
     real = np.array(real)
     neq = np.not_equal(pred, real)
     err = float(neq.sum())/pred.shape[0]
-    fpr = float(np.logical_and(pred==1,neq).sum())/(real==0).sum()
+    # fpr = float(np.logical_and(pred==1,neq).sum())/(real==0).sum()
     fnr = float(np.logical_and(pred==0,neq).sum())/(real==1).sum()
-    return err, fpr, fnr
+    return err, fnr
 
 def group_argtopk(groups, data,k=1):
     order = np.lexsort((data, groups))
