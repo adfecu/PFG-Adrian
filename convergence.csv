@@ -1,1 +1,7 @@
 epoch,metric,value
+1,loss,0.7362730503082275
+1,error,0.0
+1,fnr,0.0
+2,loss,0.531003937125206
+2,error,0.0
+2,fnr,0.0
